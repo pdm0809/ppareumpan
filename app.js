@@ -248,7 +248,7 @@ async function doLogin() {
   const pw = $('loginPw').value;
   if (!name || !pw) { toast('이름과 비밀번호를 입력하세요'); return; }
   try {
-    const r = await api('apiLogin', [name, pw, $('rememberMe').checked]);
+    const r = await api('apiLogin', [name, pw, true]); // 항상 자동로그인 유지
     TOKEN = r.token;
     try { localStorage.setItem('pp-token', TOKEN); } catch (e) {}
     if (r.must_change_pw) {
