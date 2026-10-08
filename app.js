@@ -4,6 +4,8 @@
 /* ================= 설정 ================= */
 // ★ GAS 웹앱(/exec) 주소를 여기에 입력. 비어 있으면 "서버 연결 필요" 안내 표시.
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwB-IjWtNuB0tppY9-xdBr79EeyTJ16EZ1Nr-DhKbWalPUppsTUFmWVWSSajmeYam9x/exec';
+/* Supabase Edge Function URL — 배포 후 입력. 비어 있으면 GAS(JSONP)로 동작 */
+const SUPABASE_URL = 'https://saokvvmfdgybocpfamhl.supabase.co/functions/v1/api';
 
 /* ================= 유틸 ================= */
 const $ = (id) => document.getElementById(id);
@@ -61,10 +63,30 @@ function setTheme(t) {
 let TOKEN = null;
 try { TOKEN = localStorage.getItem('pp-token'); } catch (e) {}
 
-/* JSONP API 클라이언트 (GAS TextOutput은 setHeader 미지원 → CORS 불가, JSONP만 가능)
-   규격: API_BASE?fn=xxx&args=<JSON 배열>&callback=cbName
-   args는 반드시 배열(positional). 서버 시그니처 (token, ...) 순서. */
-function api(fn, args, timeoutMs) {
+/* API 클라이언트
+   - SUPABASE_URL이 설정되면 fetch POST (빠름, CORS 지원)
+   - 비어 있으면 GAS JSONP (구방식) */
+async function apiFetch(fn, args, timeoutMs) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs || 30000);
+  try {
+    const res = await fetch(SUPABASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fn, args: args || [] }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!data || !data.ok) throw new Error((data && data.error) || 'API_ERROR');
+    return data;
+  } catch (e) {
+    clearTimeout(timer);
+    if (e && e.name === 'AbortError') throw new Error('TIMEOUT');
+    throw e;
+  }
+}
+function apiJsonp(fn, args, timeoutMs) {
   return new Promise((resolve, reject) => {
     if (!API_BASE) { const err = new Error('NO_API'); err.noApi = true; reject(err); return; }
     const cb = 'cb' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
@@ -92,6 +114,10 @@ function api(fn, args, timeoutMs) {
       '&callback=' + cb;
     document.head.appendChild(s);
   });
+}
+function api(fn, args, timeoutMs) {
+  if (SUPABASE_URL) return apiFetch(fn, args, timeoutMs);
+  return apiJsonp(fn, args, timeoutMs);
 }
 function needApi() {
   document.querySelectorAll('.apiWarnBox').forEach((w) => {
