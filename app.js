@@ -289,7 +289,7 @@ async function boot() {
     try {
       const r = await api('apiUsers', [TOKEN]);
       USERS = r.users || [];
-      const opts = ['<option value="">전체 직원</option>'].concat(USERS.map((u) =>
+      const opts = ['<option value="">전체 직원</option>'].concat(USERS.filter((u) => u.status === 'active').map((u) =>
         '<option value="' + esc(u.user_id) + '">' + esc(u.name) + '</option>')).join('');
       $('staffSel').innerHTML = opts;
     } catch (e) { /* 직원 목록 실패해도 계속 */ }
@@ -694,9 +694,10 @@ async function loadAdmin() {
     $('pendList').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => judgeUser(b.dataset.id, b.dataset.act)));
   } catch (e) { /* */ }
   // 직원 셀렉트들
-  const opts = USERS.map((u) => '<option value="' + esc(u.user_id) + '">' + esc(u.name) + '</option>').join('');
+  const activeUsers = USERS.filter((u) => u.status === 'active');
+  const opts = activeUsers.map((u) => '<option value="' + esc(u.user_id) + '">' + esc(u.name) + '</option>').join('');
   $('admStaffSel').innerHTML = opts; $('kickSel').innerHTML = opts;
-  if (USERS.length) loadAdmStaff(USERS[0].user_id);
+  if (activeUsers.length) loadAdmStaff(activeUsers[0].user_id);
 }
 async function judgeUser(uid, act) {
   try {
