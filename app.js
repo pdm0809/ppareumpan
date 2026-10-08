@@ -145,6 +145,41 @@ function apiPost(fn, args, timeoutMs) {
   });
 }
 
+/* ---- API 응답 캐시: stale-while-revalidate (탭 전환 즉시 표시) ---- */
+const PCache = {
+  mem: {},
+  get(k) {
+    const m = this.mem[k];
+    if (m) return { data: m.data, age: Date.now() - m.t };
+    try {
+      const raw = localStorage.getItem('ppc_' + k);
+      if (raw) { const o = JSON.parse(raw); return { data: o.data, age: Date.now() - o.t }; }
+    } catch (e) {}
+    return null;
+  },
+  set(k, data) {
+    this.mem[k] = { t: Date.now(), data };
+    try { localStorage.setItem('ppc_' + k, JSON.stringify({ t: Date.now(), data })); } catch (e) {}
+  },
+  del(prefix) {
+    Object.keys(this.mem).forEach(k => { if (k.indexOf(prefix) === 0) delete this.mem[k]; });
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf('ppc_' + prefix) === 0) localStorage.removeItem(k);
+      }
+    } catch (e) {}
+  }
+};
+const CACHE_TTL = 10 * 60 * 1000;
+function sameData(a, b) { try { return JSON.stringify(a) === JSON.stringify(b); } catch (e) { return false; } }
+// 키별 캐시 무효화 (기록/지출/목표 변경 시)
+function bustCache() { PCache.del('home_'); PCache.del('weeks_'); PCache.del('exp_'); PCache.del('recent_'); }
+
+/* ---- GAS 웜업 핑: 앱 사용 중 4분마다 호출해 콜드스타트 방지 ---- */
+function warmPing() { if (API_BASE && TOKEN) api('apiPing', []).catch(() => {}); }
+setInterval(warmPing, 4 * 60 * 1000);
+
 /* ================= 상태 ================= */
 let ME = null;            // {user_id, name, role}
 let SETTINGS = Object.assign({}, DEF_RATES);  // 내(또는 조회 대상) 요율
@@ -246,8 +281,20 @@ async function refreshSettings() {
 /* ================= 홈 ================= */
 async function loadHome() {
   if (!API_BASE) { needApi(); return; }
+  const key = 'home_' + targetId();
+  const hit = PCache.get(key);
+  if (hit && hit.data) {
+    renderHome(hit.data);
+    // 백그라운드 갱신 (바뀐 경우만 다시 렌더)
+    api('apiGetHome', [TOKEN, targetId()]).then(d => {
+      PCache.set(key, d);
+      if (!sameData(d, hit.data)) renderHome(d);
+    }).catch(() => {});
+    return;
+  }
   try {
     const r = await api('apiGetHome', [TOKEN, targetId()]);
+    PCache.set(key, r);
     renderHome(r);
   } catch (e) { toast('불러오기 실패'); }
 }
@@ -283,7 +330,7 @@ async function saveTarget() {
   if (!amt) { toast('목표 금액을 입력하세요'); return; }
   try {
     await api('apiSetTarget', [TOKEN, monthStr(), amt, targetId()]);
-    toast('저장됨'); $('targetInput').value = ''; loadHome();
+    toast('저장됨'); $('targetInput').value = ''; bustCache(); loadHome();
   } catch (e) { toast('저장 실패'); }
 }
 
@@ -297,9 +344,43 @@ async function loadWeeks(reset) {
   if (!API_BASE) { needApi(); return; }
   if (reset) { WEEKS = []; WEEKS_REF = todayStr(); WEEKS_END = false; $('weeksList').innerHTML = ''; }
   if (WEEKS_END) return;
+  const key = 'weeks_' + targetId() + '_' + PLATFORM;
+  const fetchArgs = [TOKEN, WEEKS_REF, 12, targetId(), PLATFORM];
+  if (reset) {
+    const hit = PCache.get(key);
+    if (hit && hit.data && hit.data.weeks) {
+      const got = hit.data.weeks;
+      WEEKS = got.slice();
+      WEEKS_END = got.length < 12;
+      if (!WEEKS_END && got.length) {
+        const last = got[got.length - 1];
+        const d = parseD(last.week_start); d.setDate(d.getDate() - 1);
+        WEEKS_REF = dateStr(d);
+      }
+      renderWeeks();
+      $('moreWeeks').classList.toggle('hidden', WEEKS_END || !WEEKS.length);
+      api('apiGetWeeks', fetchArgs).then(r => {
+        PCache.set(key, r);
+        const fresh = r.weeks || [];
+        if (!sameData(fresh, got)) {
+          WEEKS = fresh.slice();
+          WEEKS_END = fresh.length < 12;
+          if (!WEEKS_END && fresh.length) {
+            const last = fresh[fresh.length - 1];
+            const d = parseD(last.week_start); d.setDate(d.getDate() - 1);
+            WEEKS_REF = dateStr(d);
+          }
+          renderWeeks();
+          $('moreWeeks').classList.toggle('hidden', WEEKS_END || !WEEKS.length);
+        }
+      }).catch(() => {});
+      return;
+    }
+  }
   try {
-    const r = await api('apiGetWeeks', [TOKEN, WEEKS_REF, 12, targetId(), PLATFORM]);
+    const r = await api('apiGetWeeks', fetchArgs);
     const got = r.weeks || [];
+    if (reset) PCache.set(key, r);
     WEEKS = WEEKS.concat(got);
     if (got.length < 12) WEEKS_END = true;
     else {
@@ -399,9 +480,10 @@ async function loadExpenses() {
   if (!API_BASE) { needApi(); return; }
   const mm = monthStr();
   $('exMonthTitle').textContent = mm.slice(5) + '월';
-  try {
-    const r = await api('apiGetExpenses', [TOKEN, mm, targetId()]);
-    const list = r.expenses || [];
+  const key = 'exp_' + targetId() + '_' + mm;
+  const hit = PCache.get(key);
+  const render = (r) => {
+    const list = (r && r.expenses) || [];
     const total = list.reduce((a, x) => a + (+x.amount || 0), 0);
     $('exTotal').textContent = fmt(total);
     $('expList').innerHTML = list.length ? list.map((x) =>
@@ -410,6 +492,19 @@ async function loadExpenses() {
       '<span><b>' + fmt(x.amount) + '</b> <button class="btnDanger" data-d="' + esc(x.date) + '" data-c="' + esc(x.category) + '" data-a="' + esc(x.amount) + '">삭제</button></span></div>'
     ).join('') : '<div style="color:var(--muted);font-size:14px">지출이 없습니다</div>';
     $('expList').querySelectorAll('.btnDanger').forEach((b) => b.addEventListener('click', () => delExpense(b)));
+  };
+  if (hit && hit.data) {
+    render(hit.data);
+    api('apiGetExpenses', [TOKEN, mm, targetId()]).then(d => {
+      PCache.set(key, d);
+      if (!sameData(d, hit.data)) render(d);
+    }).catch(() => {});
+    return;
+  }
+  try {
+    const r = await api('apiGetExpenses', [TOKEN, mm, targetId()]);
+    PCache.set(key, r);
+    render(r);
   } catch (e) { toast('불러오기 실패'); }
 }
 async function saveExpense() {
@@ -417,14 +512,14 @@ async function saveExpense() {
   if (!d || !amt) { toast('날짜와 금액을 입력하세요'); return; }
   try {
     await api('apiSaveExpense', [TOKEN, { date: d, category: EX_CAT, amount: amt, memo: $('exMemo').value.trim(), user_id: targetId() }]);
-    toast('저장됨'); $('exAmount').value = ''; $('exMemo').value = ''; loadExpenses();
+    toast('저장됨'); $('exAmount').value = ''; $('exMemo').value = ''; bustCache(); loadExpenses();
   } catch (e) { toast('저장 실패'); }
 }
 async function delExpense(btn) {
   if (!confirm('삭제할까요?')) return;
   try {
     await api('apiDeleteExpense', [TOKEN, { date: btn.dataset.d, category: btn.dataset.c, amount: +btn.dataset.a, user_id: targetId() }]);
-    toast('삭제됨'); loadExpenses();
+    toast('삭제됨'); bustCache(); loadExpenses();
   } catch (e) { toast('삭제 실패'); }
 }
 
@@ -459,6 +554,7 @@ async function saveRecord() {
   if (!r.date || (!r.amount && !r.count)) { toast('날짜와 금액/건수를 입력하세요'); return; }
   try {
     await api('apiSaveRecord', [TOKEN, r]);
+    bustCache();
     toast('저장됨');
     ['rcAmount','rcPromo','rcCount','rcDist','rcMemo'].forEach((id) => { $(id).value = ''; });
     previewRecord();
@@ -469,6 +565,7 @@ async function delRecord() {
   if (!d || !confirm(d + ' ' + p + ' 기록을 삭제할까요?')) return;
   try {
     await api('apiDeleteRecord', [TOKEN, d, p, targetId()]);
+    bustCache();
     toast('삭제됨');
   } catch (e) { toast('삭제 실패'); }
 }
