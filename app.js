@@ -64,7 +64,7 @@ try { TOKEN = localStorage.getItem('pp-token'); } catch (e) {}
 /* JSONP API 클라이언트 (GAS TextOutput은 setHeader 미지원 → CORS 불가, JSONP만 가능)
    규격: API_BASE?fn=xxx&args=<JSON 배열>&callback=cbName
    args는 반드시 배열(positional). 서버 시그니처 (token, ...) 순서. */
-function api(fn, args) {
+function api(fn, args, timeoutMs) {
   return new Promise((resolve, reject) => {
     if (!API_BASE) { const err = new Error('NO_API'); err.noApi = true; reject(err); return; }
     const cb = 'cb' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
@@ -77,7 +77,7 @@ function api(fn, args) {
     const timer = setTimeout(() => {
       if (done) return; done = true; cleanup();
       reject(new Error('TIMEOUT'));
-    }, 30000);
+    }, timeoutMs || 30000);
     window[cb] = (data) => {
       if (done) return; done = true; clearTimeout(timer); cleanup();
       if (!data || !data.ok) reject(new Error((data && data.error) || 'API_ERROR'));
@@ -433,13 +433,13 @@ function downscaleImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 1600;
+      const MAX = 1024;
       let w = img.width, h = img.height;
       if (Math.max(w, h) > MAX) { const k = MAX / Math.max(w, h); w = Math.round(w * k); h = Math.round(h * k); }
       const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
       cv.getContext('2d').drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(img.src);
-      resolve(cv.toDataURL('image/jpeg', 0.85));
+      resolve(cv.toDataURL('image/jpeg', 0.7));
     };
     img.onerror = reject;
     img.src = URL.createObjectURL(file);
@@ -447,10 +447,17 @@ function downscaleImage(file) {
 }
 async function handlePhoto(file) {
   if (!file) return;
-  $('ocrStatus').innerHTML = '<div class="ocrBox"><span class="spin">⏳</span> 사진에서 기록 읽는 중…</div>';
+  const t0 = Date.now();
+  const tick = setInterval(() => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    const el = $('ocrStatus').firstChild;
+    if (el) el.innerHTML = '<span class="spin">⏳</span> 사진에서 기록 읽는 중… ' + s + '초';
+  }, 1000);
+  $('ocrStatus').innerHTML = '<div class="ocrBox"><span class="spin">⏳</span> 사진에서 기록 읽는 중… 0초</div>';
   try {
     const dataUrl = await downscaleImage(file);
-    const r = await api('apiExtractPhoto', [TOKEN, dataUrl]);
+    const r = await api('apiExtractPhoto', [TOKEN, dataUrl], 180000);
+    clearInterval(tick);
     // r: {date, count, amount, distance}
     if (r.date) $('rcDate').value = r.date;
     if (r.count != null) $('rcCount').value = r.count;
@@ -460,7 +467,11 @@ async function handlePhoto(file) {
     $('ocrStatus').innerHTML = '<div class="ocrBox">✅ 추출됨: <b>' + fmtN(r.count || 0) + '건 ' + fmt(r.amount || 0) + '</b>' +
       (r.distance ? ' · ' + r.distance + 'km' : '') + ' — 확인 후 저장하세요. 사진은 서버에서 바로 삭제됩니다.</div>';
   } catch (e) {
-    $('ocrStatus').innerHTML = '<div class="ocrBox">❌ 추출 실패. 직접 입력하세요.</div>';
+    clearInterval(tick);
+    const msg = (e && e.message === 'TIMEOUT')
+      ? '❌ 3분이 지나도 응답이 없어 중단됐어요. 다시 시도하거나 직접 입력하세요.'
+      : '❌ 추출 실패. 직접 입력하세요.';
+    $('ocrStatus').innerHTML = '<div class="ocrBox">' + msg + '</div>';
   }
 }
 
