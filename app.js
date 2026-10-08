@@ -222,7 +222,7 @@ function targetId() {
 }
 
 /* ================= 화면 전환 ================= */
-const VIEWS = ['login','signup','home','weeks','expenses','record','admin'];
+const VIEWS = ['login','signup','findpw','forcepw','home','weeks','expenses','record','admin'];
 function showView(v) {
   CUR_VIEW = v;
   VIEWS.forEach((x) => $('view-' + x).classList.toggle('hidden', x !== v));
@@ -251,11 +251,39 @@ async function doLogin() {
     const r = await api('apiLogin', [name, pw, $('rememberMe').checked]);
     TOKEN = r.token;
     try { localStorage.setItem('pp-token', TOKEN); } catch (e) {}
+    if (r.must_change_pw) {
+      TEMP_PW = pw; // 강제 변경용으로만 메모리에 임시 보관
+      showView('forcepw');
+      return;
+    }
     await boot();
   } catch (e) {
     if (e.noApi) { needApi(); return; }
-    toast(e.message === 'PENDING' ? '승인 대기 중입니다' : '로그인 실패');
+    toast(e.message === 'PENDING' ? '승인 대기 중입니다'
+      : e.message === 'TEMP_EXPIRED' ? '임시 비밀번호가 만료되었습니다. 관리자에게 다시 요청하세요'
+      : '로그인 실패');
   }
+}
+let TEMP_PW = null; // 임시비번 강제 변경용 (사용 후 즉시 파기)
+async function doForcePwChange() {
+  const nw = $('fpwNew').value, nw2 = $('fpwNew2').value;
+  if (!nw || nw.length < 4) { toast('새 비밀번호는 4자 이상이어야 합니다'); return; }
+  if (nw !== nw2) { toast('새 비밀번호가 일치하지 않습니다'); return; }
+  try {
+    await api('apiChangePassword', [TOKEN, TEMP_PW, nw]);
+    TEMP_PW = null;
+    $('fpwNew').value = ''; $('fpwNew2').value = '';
+    toast('비밀번호가 변경되었습니다');
+    await boot();
+  } catch (e) { toast('변경 실패'); }
+}
+async function doFindPw() {
+  const name = $('fpName').value.trim();
+  if (!name) { toast('이름을 입력하세요'); return; }
+  try {
+    await api('apiRequestPasswordReset', [name]);
+    $('findpwForm').classList.add('hidden'); $('findpwDone').classList.remove('hidden');
+  } catch (e) { toast('요청 실패'); }
 }
 async function doLogout() {
   try { await api('apiLogout', [TOKEN]); } catch (e) {}
@@ -358,6 +386,17 @@ async function saveTarget() {
     await api('apiSetTarget', [TOKEN, monthStr(), amt, targetId()]);
     toast('저장됨'); $('targetInput').value = ''; bustCache(); loadHome();
   } catch (e) { toast('저장 실패'); }
+}
+async function changePassword() {
+  const cur = $('pwCur').value, nw = $('pwNew').value, nw2 = $('pwNew2').value;
+  if (!cur || !nw) { toast('비밀번호를 입력하세요'); return; }
+  if (nw.length < 4) { toast('새 비밀번호는 4자 이상이어야 합니다'); return; }
+  if (nw !== nw2) { toast('새 비밀번호가 일치하지 않습니다'); return; }
+  try {
+    await api('apiChangePassword', [TOKEN, cur, nw]);
+    toast('비밀번호가 변경되었습니다');
+    $('pwCur').value = ''; $('pwNew').value = ''; $('pwNew2').value = '';
+  } catch (e) { toast(e.message === 'WRONG_PASSWORD' ? '현재 비밀번호가 틀렸습니다' : '변경 실패'); }
 }
 
 /* ================= 주별 내역 (배달판 클론) ================= */
@@ -696,8 +735,33 @@ async function loadAdmin() {
   // 직원 셀렉트들
   const activeUsers = USERS.filter((u) => u.status === 'active');
   const opts = activeUsers.map((u) => '<option value="' + esc(u.user_id) + '">' + esc(u.name) + '</option>').join('');
-  $('admStaffSel').innerHTML = opts; $('kickSel').innerHTML = opts;
+  $('admStaffSel').innerHTML = opts; $('kickSel').innerHTML = opts; $('pwResetSel').innerHTML = opts;
   if (activeUsers.length) loadAdmStaff(activeUsers[0].user_id);
+  // 비밀번호 재설정 요청
+  try {
+    const r = await api('apiPasswordResetRequests', [TOKEN]);
+    const list = r.requests || [];
+    $('pwReqCnt').textContent = list.length ? '(' + list.length + ')' : '';
+    $('pwReqList').innerHTML = list.length ? list.map((q) =>
+      '<div class="pendRow"><span>' + esc(q.name) + ' <span style="color:var(--muted);font-size:12px">' + esc((q.requested_at || '').slice(0, 16).replace('T', ' ')) + '</span></span>' +
+      '<span><button class="miniBtn miniOk" data-id="' + esc(q.user_id) + '">임시비번 발급</button></span></div>'
+    ).join('') : '<div style="color:var(--muted);font-size:14px">없음</div>';
+    $('pwReqList').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => issueTempPw(b.dataset.id)));
+  } catch (e) { /* */ }
+}
+async function issueTempPw(uid) {
+  const nm = (USERS.find((u) => String(u.user_id) === String(uid)) || {}).name || uid;
+  if (!confirm(nm + '님의 비밀번호를 재설정할까요?\n기존 비밀번호는 즉시 무효화됩니다.')) return;
+  try {
+    const r = await api('apiResetPassword', [TOKEN, uid]);
+    const box = '<div class="tempPw">' + esc(nm) + ' : ' + esc(r.temp_password) + '</div>' +
+      '<div style="color:var(--muted);font-size:12px;margin-top:4px">24시간 유효 · 본인에게 직접 전달하세요</div>';
+    $('pwResetResult').innerHTML = box;
+    const reqBox = document.createElement('div'); // 요청 목록에서도 같은 표시
+    toast('임시 비밀번호 발급됨');
+    loadAdmin();
+    $('pwResetResult').innerHTML = box; // loadAdmin 후에도 유지
+  } catch (e) { toast('발급 실패'); }
 }
 async function judgeUser(uid, act) {
   try {
@@ -755,6 +819,15 @@ function bindEvents() {
     $('view-login').classList.add('hidden'); $('view-signup').classList.remove('hidden');
     $('signupForm').classList.remove('hidden'); $('signupDone').classList.add('hidden');
   });
+  $('findPw').addEventListener('click', () => {
+    $('findpwForm').classList.remove('hidden'); $('findpwDone').classList.add('hidden');
+    $('fpName').value = '';
+    showView('findpw');
+  });
+  $('findpwBtn').addEventListener('click', doFindPw);
+  $('findpwBack').addEventListener('click', () => showView('login'));
+  $('forcepwBtn').addEventListener('click', doForcePwChange);
+  $('pwChangeBtn').addEventListener('click', changePassword);
   $('backLogin').addEventListener('click', () => {
     $('view-signup').classList.add('hidden'); $('view-login').classList.remove('hidden');
   });
@@ -796,6 +869,10 @@ function bindEvents() {
   $('admSaveBtn').addEventListener('click', saveAdmStaff);
   $('bulkBtn').addEventListener('click', bulkRegister);
   $('kickBtn').addEventListener('click', kickUser);
+  $('pwResetBtn').addEventListener('click', () => {
+    const uid = $('pwResetSel').value;
+    if (uid) issueTempPw(uid);
+  });
 }
 
 /* ================= 시작 ================= */

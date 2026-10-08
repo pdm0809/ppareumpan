@@ -29,6 +29,8 @@
     <button class="btn btnPrimary" id="loginBtn">로그인</button>
     <div style="text-align:center;margin-top:6px">
       <button class="linkBtn" id="goSignup">가입 신청</button>
+      <span style="color:var(--faint)"> · </span>
+      <button class="linkBtn" id="findPw">비밀번호 찾기</button>
     </div>
   </div>
 </section>
@@ -53,6 +55,41 @@
     <div style="text-align:center;margin-top:6px">
       <button class="linkBtn" id="backLogin">로그인으로 돌아가기</button>
     </div>
+  </div>
+</section>
+
+<!-- ===== 비밀번호 찾기 ===== -->
+<section id="view-findpw" class="view hidden">
+  <div class="loginBox">
+    <div class="appTitle">비밀번호 찾기<span class="dot">.</span></div>
+    <div class="appSub">가입한 이름을 입력하세요</div>
+    <div id="findpwForm">
+      <label for="fpName">이름</label>
+      <input id="fpName" placeholder="실명 입력" autocomplete="username">
+      <button class="btn btnPrimary" id="findpwBtn">재설정 요청</button>
+      <div style="color:var(--muted);font-size:13px;margin-top:10px;line-height:1.6">관리자가 확인 후 임시 비밀번호를 알려드립니다.<br>임시 비밀번호는 24시간만 유효합니다.</div>
+    </div>
+    <div id="findpwDone" class="hidden" style="text-align:center">
+      <div style="font-size:44px;margin-bottom:12px">📨</div>
+      <div style="font-weight:800;font-size:17px;margin-bottom:6px">요청 완료</div>
+      <div style="color:var(--muted);font-size:14px;margin-bottom:16px">관리자에게 재설정을 요청했습니다.<br>임시 비밀번호를 받아 로그인하세요.</div>
+    </div>
+    <div style="text-align:center;margin-top:6px">
+      <button class="linkBtn" id="findpwBack">로그인으로 돌아가기</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 임시비번 강제 변경 ===== -->
+<section id="view-forcepw" class="view hidden">
+  <div class="loginBox">
+    <div class="appTitle">비밀번호 변경<span class="dot">.</span></div>
+    <div class="appSub">임시 비밀번호로 로그인했습니다.<br>새 비밀번호를 설정해야 계속 사용할 수 있습니다.</div>
+    <label for="fpwNew">새 비밀번호 (4자 이상)</label>
+    <input id="fpwNew" type="password" autocomplete="new-password" placeholder="새 비밀번호">
+    <label for="fpwNew2">새 비밀번호 확인</label>
+    <input id="fpwNew2" type="password" autocomplete="new-password" placeholder="새 비밀번호 확인">
+    <button class="btn btnPrimary" id="forcepwBtn">변경하고 시작하기</button>
   </div>
 </section>
 
@@ -192,6 +229,18 @@
         <button class="btn btnGhost" id="kickBtn" style="margin-top:0">세션 끊기</button>
       </div>
     </div>
+    <div class="card adminSec">
+      <h4>비밀번호 재설정</h4>
+      <div class="row2">
+        <select id="pwResetSel"></select>
+        <button class="btn btnGhost" id="pwResetBtn" style="margin-top:0">임시비번 발급</button>
+      </div>
+      <div id="pwResetResult" style="margin-top:8px"></div>
+    </div>
+    <div class="card adminSec">
+      <h4>재설정 요청 <span id="pwReqCnt"></span></h4>
+      <div id="pwReqList"><div style="color:var(--muted);font-size:14px">없음</div></div>
+    </div>
   </section>
 </main>
 
@@ -214,6 +263,14 @@
     <label>콜당 수수료 (원/건)</label>
     <input type="number" id="setCallFee" inputmode="numeric">
     <div style="color:var(--muted);font-size:12px;margin-top:8px">소득세 3%·주민세 0.3%는 고정(10원 단위 내림)입니다.</div>
+    <h4 style="margin:16px 0 6px;font-size:14px">비밀번호 변경</h4>
+    <label>현재 비밀번호</label>
+    <input type="password" id="pwCur" autocomplete="current-password" placeholder="현재 비밀번호">
+    <label>새 비밀번호 (4자 이상)</label>
+    <input type="password" id="pwNew" autocomplete="new-password" placeholder="새 비밀번호">
+    <label>새 비밀번호 확인</label>
+    <input type="password" id="pwNew2" autocomplete="new-password" placeholder="새 비밀번호 확인">
+    <button class="btn btnGhost" id="pwChangeBtn" style="margin-top:6px">비밀번호 변경</button>
     <div class="row2">
       <button class="btn btnGhost" id="setClose">닫기</button>
       <button class="btn btnPrimary" id="setSave">저장</button>
