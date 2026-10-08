@@ -100,6 +100,51 @@ function needApi() {
   });
 }
 
+/* ---- 대용량 POST (사진 OCR용): 숨은 form → iframe → postMessage ---- */
+function apiPost(fn, args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (!API_BASE) { reject(new Error('NO_API')); return; }
+    const cb = 'cb' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+    const iframe = document.createElement('iframe');
+    iframe.name = 'pf' + cb;
+    iframe.style.display = 'none';
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = API_BASE;
+    form.target = iframe.name;
+    form.style.display = 'none';
+    const add = (k, v) => {
+      const i = document.createElement('input');
+      i.type = 'hidden'; i.name = k; i.value = v;
+      form.appendChild(i);
+    };
+    add('fn', fn);
+    add('args', JSON.stringify(args || []));
+    add('cb', cb);
+    const cleanup = () => {
+      window.removeEventListener('message', onMsg);
+      try { form.remove(); } catch (e) {}
+      try { iframe.remove(); } catch (e) {}
+    };
+    const timer = setTimeout(() => { cleanup(); reject(new Error('TIMEOUT')); }, timeoutMs || 180000);
+    const onMsg = (ev) => {
+      try {
+        if (ev.source !== iframe.contentWindow) return;
+      } catch (e) { return; }
+      let d = null;
+      try { d = JSON.parse(ev.data); } catch (e) { return; }
+      if (!d || d.cb !== cb) return;
+      clearTimeout(timer); cleanup();
+      if (d.ok) resolve(d); else reject(new Error(d.error || 'API_ERROR'));
+    };
+    window.addEventListener('message', onMsg);
+    document.body.appendChild(iframe);
+    document.body.appendChild(form);
+    try { form.submit(); }
+    catch (e) { clearTimeout(timer); cleanup(); reject(e); }
+  });
+}
+
 /* ================= 상태 ================= */
 let ME = null;            // {user_id, name, role}
 let SETTINGS = Object.assign({}, DEF_RATES);  // 내(또는 조회 대상) 요율
@@ -456,7 +501,7 @@ async function handlePhoto(file) {
   $('ocrStatus').innerHTML = '<div class="ocrBox"><span class="spin">⏳</span> 사진에서 기록 읽는 중… 0초</div>';
   try {
     const dataUrl = await downscaleImage(file);
-    const r = await api('apiExtractPhoto', [TOKEN, dataUrl], 180000);
+    const r = await apiPost('apiExtractPhoto', [TOKEN, dataUrl], 180000);
     clearInterval(tick);
     // r: {date, count, amount, distance}
     if (r.date) $('rcDate').value = r.date;
@@ -468,9 +513,12 @@ async function handlePhoto(file) {
       (r.distance ? ' · ' + r.distance + 'km' : '') + ' — 확인 후 저장하세요. 사진은 서버에서 바로 삭제됩니다.</div>';
   } catch (e) {
     clearInterval(tick);
-    const msg = (e && e.message === 'TIMEOUT')
+    const em = (e && e.message) || '';
+    const msg = (em === 'TIMEOUT')
       ? '❌ 3분이 지나도 응답이 없어 중단됐어요. 다시 시도하거나 직접 입력하세요.'
-      : '❌ 추출 실패. 직접 입력하세요.';
+      : (em === 'OCR_FAIL')
+        ? '❌ 서버 OCR 권한이 아직 승인되지 않았어요. 관리자가 Apps Script에서 Drive/Docs 권한을 승인해야 합니다.'
+        : '❌ 추출 실패. 직접 입력하세요.';
     $('ocrStatus').innerHTML = '<div class="ocrBox">' + msg + '</div>';
   }
 }
