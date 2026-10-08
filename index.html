@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>빠름판</title>
+<meta name="description" content="빠름빠름 기사 기록 앱">
+<meta name="theme-color" content="#f2f2f2" id="metaTheme">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<!-- ===== 로그인 ===== -->
+<section id="view-login" class="view">
+  <div class="loginBox">
+    <div class="appTitle">빠름판<span class="dot">.</span></div>
+    <div class="appSub">빠름빠름 기사 기록 앱</div>
+    <div id="apiWarnLogin" class="apiWarnBox hidden" style="margin:0 0 12px"></div>
+    <label for="loginName">이름</label>
+    <input id="loginName" autocomplete="username" placeholder="이름">
+    <label for="loginPw">비밀번호</label>
+    <input id="loginPw" type="password" autocomplete="current-password" placeholder="비밀번호">
+    <div class="checkRow"><input type="checkbox" id="rememberMe" checked><label for="rememberMe" style="margin:0">로그인 기억하기</label></div>
+    <button class="btn btnPrimary" id="loginBtn">로그인</button>
+    <div style="text-align:center;margin-top:6px">
+      <button class="linkBtn" id="goSignup">가입 신청</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 가입 신청 ===== -->
+<section id="view-signup" class="view hidden">
+  <div class="loginBox">
+    <div class="appTitle">가입 신청<span class="dot">.</span></div>
+    <div class="appSub">관리자 승인 후 로그인할 수 있습니다</div>
+    <div id="signupForm">
+      <label for="suName">이름</label>
+      <input id="suName" placeholder="실명 입력">
+      <label for="suPw">비밀번호</label>
+      <input id="suPw" type="password" placeholder="4자 이상">
+      <button class="btn btnPrimary" id="signupBtn">신청하기</button>
+    </div>
+    <div id="signupDone" class="hidden" style="text-align:center">
+      <div style="font-size:44px;margin-bottom:12px">✅</div>
+      <div style="font-weight:800;font-size:17px;margin-bottom:6px">신청 완료</div>
+      <div style="color:var(--muted);font-size:14px;margin-bottom:16px">관리자가 승인하면 로그인할 수 있습니다.</div>
+    </div>
+    <div style="text-align:center;margin-top:6px">
+      <button class="linkBtn" id="backLogin">로그인으로 돌아가기</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 앱 헤더 ===== -->
+<header id="appHeader" class="hidden">
+  <div class="logo">빠름판<span class="dot">.</span></div>
+  <div class="hdrBtns">
+    <select id="staffSel" class="hidden" aria-label="직원 선택"></select>
+    <button class="iconBtn hidden" id="adminBtn" title="관리">👥</button>
+    <button class="iconBtn" id="themeBtn" title="테마">🌙</button>
+    <button class="iconBtn" id="setBtn" title="설정">⚙️</button>
+    <button class="logoutBtn" id="logoutBtn">로그아웃</button>
+  </div>
+</header>
+
+<main id="mainView" class="hidden">
+  <div id="apiWarn" class="apiWarnBox hidden"></div>
+
+  <!-- ===== 홈 ===== -->
+  <section id="view-home" class="view hidden">
+    <div class="pageTitle">홈</div>
+    <div class="card">
+      <h3>이번 주 <span id="homeWeekRange" style="color:var(--muted);font-weight:500;font-size:13px"></span></h3>
+      <div class="bigNum" id="homeTotal">-</div>
+      <div class="statGrid">
+        <div class="stat"><div class="v" id="homeCount">-</div><div class="k">건수</div></div>
+        <div class="stat"><div class="v" id="homeUnit">-</div><div class="k">단가</div></div>
+        <div class="stat"><div class="v" id="homePay" style="color:var(--green)">-</div><div class="k">지급예정</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3><span id="homeMonthTitle">이번달</span> 목표</h3>
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="font-size:15px"><b id="homeMonthAmt">-</b> <span style="color:var(--muted);font-size:13px">/ <span id="homeTarget">-</span></span></div>
+        <div style="font-size:13px;color:var(--muted)" id="homePct"></div>
+      </div>
+      <div class="progWrap"><div class="progBar" id="homeProg" style="width:0%"></div></div>
+      <div class="row2">
+        <input id="targetInput" type="number" inputmode="numeric" placeholder="목표 금액 (원)" style="margin:10px 0 0">
+        <button class="btn btnGhost" id="targetBtn" style="margin-top:10px">설정</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>최근 기록</h3>
+      <div id="recentList"><div style="color:var(--muted);font-size:14px">불러오는 중…</div></div>
+    </div>
+  </section>
+
+  <!-- ===== 배민 (주별 내역) ===== -->
+  <section id="view-weeks" class="view hidden">
+    <div class="pageTitle">배민 주별 내역</div>
+    <div class="segRow" id="platSeg">
+      <button data-p="전체" class="sel">전체</button><button data-p="배민">배민</button><button data-p="배민1">배민1</button><button data-p="알뜰배달">알뜰배달</button>
+    </div>
+    <div id="weeksList"></div>
+    <button id="moreWeeks" class="moreBtn hidden">더 보기</button>
+  </section>
+
+  <!-- ===== 지출 ===== -->
+  <section id="view-expenses" class="view hidden">
+    <div class="pageTitle">지출</div>
+    <div class="card">
+      <h3>지출 입력</h3>
+      <div class="segRow" id="exCatSeg" style="margin:0 0 4px">
+        <button data-c="주유" class="sel">주유</button><button data-c="식비">식비</button><button data-c="정비">정비</button><button data-c="기타">기타</button>
+      </div>
+      <label for="exDate">날짜</label>
+      <input type="date" id="exDate">
+      <label for="exAmount">금액</label>
+      <input type="number" id="exAmount" inputmode="numeric" placeholder="원">
+      <label for="exMemo">메모</label>
+      <input id="exMemo" placeholder="선택">
+      <button class="btn btnPrimary" id="exSaveBtn">저장</button>
+    </div>
+    <div class="card">
+      <h3><span id="exMonthTitle">이번달</span> 지출 <span id="exTotal" style="float:right"></span></h3>
+      <div id="expList"></div>
+    </div>
+  </section>
+
+  <!-- ===== 기록 ===== -->
+  <section id="view-record" class="view hidden">
+    <div class="pageTitle">기록 입력</div>
+    <div class="card">
+      <button class="btn btnGhost" id="ocrBtn" style="margin-top:0">📷 오늘의기록 불러오기</button>
+      <div id="ocrStatus"></div>
+      <div class="row2">
+        <div><label for="rcDate">날짜</label><input type="date" id="rcDate"></div>
+        <div><label for="rcPlat">플랫폼</label>
+          <select id="rcPlat"><option>배민</option><option>배민1</option><option>알뜰배달</option></select></div>
+      </div>
+      <label for="rcAmount">배달금액</label>
+      <input type="number" id="rcAmount" inputmode="numeric" placeholder="원">
+      <label for="rcPromo">프로모션</label>
+      <input type="number" id="rcPromo" inputmode="numeric" placeholder="원 (없으면 비워두기)">
+      <div class="row2">
+        <div><label for="rcCount">건수</label><input type="number" id="rcCount" inputmode="numeric" placeholder="건"></div>
+        <div><label for="rcDist">운행거리 (km)</label><input type="number" id="rcDist" step="0.1" inputmode="decimal" placeholder="km"></div>
+      </div>
+      <label for="rcMemo">메모</label>
+      <input id="rcMemo" placeholder="선택">
+      <div id="rcPreview"></div>
+      <button class="btn btnPrimary" id="rcSaveBtn">저장</button>
+      <button class="btn btnGhost" id="rcDelBtn">이 날짜 기록 삭제</button>
+    </div>
+  </section>
+
+  <!-- ===== 관리자 ===== -->
+  <section id="view-admin" class="view hidden">
+    <div class="pageTitle">관리</div>
+    <div class="card adminSec">
+      <h4>가입 승인 대기 <span id="pendCnt"></span></h4>
+      <div id="pendList"><div style="color:var(--muted);font-size:14px">없음</div></div>
+    </div>
+    <div class="card adminSec">
+      <h4>직원별 요율·수수료</h4>
+      <select id="admStaffSel" style="margin-bottom:4px"></select>
+      <div class="row2">
+        <div><label>산재요율 (%)</label><input type="number" id="admSanjae" step="0.00001"></div>
+        <div><label>고용요율 (%)</label><input type="number" id="admGoyong" step="0.00001"></div>
+      </div>
+      <label>콜당 수수료 (원/건)</label>
+      <input type="number" id="admCallFee" inputmode="numeric">
+      <button class="btn btnPrimary" id="admSaveBtn">저장</button>
+    </div>
+    <div class="card adminSec">
+      <h4>명단 일괄 등록</h4>
+      <label>이름을 한 줄에 한 명씩 입력</label>
+      <textarea id="bulkNames" placeholder="홍길동&#10;김철수&#10;…"></textarea>
+      <button class="btn btnGhost" id="bulkBtn">등록 + 임시비번 생성</button>
+      <div id="bulkResult"></div>
+    </div>
+    <div class="card adminSec">
+      <h4>직원 강제 로그아웃</h4>
+      <div class="row2">
+        <select id="kickSel"></select>
+        <button class="btn btnGhost" id="kickBtn" style="margin-top:0">세션 끊기</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ===== 하단 탭바 ===== -->
+<nav id="tabbar" class="hidden">
+  <button data-v="home" class="active"><span class="ico">🏠</span>홈</button>
+  <button data-v="weeks"><span class="ico">🛵</span>배민</button>
+  <button data-v="expenses"><span class="ico">💸</span>지출</button>
+  <button data-v="record"><span class="ico">✏️</span>기록</button>
+</nav>
+
+<!-- ===== 설정 모달 ===== -->
+<div id="setModal" class="modal hidden">
+  <div class="sheet">
+    <h3>정산 설정 <span id="setWho" style="font-size:13px;color:var(--muted);font-weight:500"></span></h3>
+    <label>산재보험 요율 (%)</label>
+    <input type="number" id="setSanjae" step="0.00001">
+    <label>고용보험 요율 (%)</label>
+    <input type="number" id="setGoyong" step="0.00001">
+    <label>콜당 수수료 (원/건)</label>
+    <input type="number" id="setCallFee" inputmode="numeric">
+    <div style="color:var(--muted);font-size:12px;margin-top:8px">소득세 3%·주민세 0.3%는 고정(10원 단위 내림)입니다.</div>
+    <div class="row2">
+      <button class="btn btnGhost" id="setClose">닫기</button>
+      <button class="btn btnPrimary" id="setSave">저장</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="photoInput" accept="image/*" class="hidden">
+
+<script src="./app.js"></script>
+</body>
+</html>

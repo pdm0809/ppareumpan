@@ -1,0 +1,19 @@
+{
+ "background_color": "#f2f2f2",
+ "description": "빠름빠름 기사 기록 앱",
+ "display": "fullscreen",
+ "icons": [
+  {
+   "src": "./icons/icon.svg",
+   "sizes": "any",
+   "type": "image/svg+xml",
+   "purpose": "any"
+  }
+ ],
+ "name": "빠름판",
+ "orientation": "portrait",
+ "scope": "./",
+ "short_name": "빠름판",
+ "start_url": "./index.html",
+ "theme_color": "#f2f2f2"
+}
