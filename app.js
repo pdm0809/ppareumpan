@@ -465,12 +465,17 @@ async function handlePhoto(file) {
 }
 
 /* ================= 설정 모달 ================= */
+function fmtRate(v) {
+  var n = parseFloat(v);
+  if (isNaN(n)) return v;
+  return String(Math.round(n * 100000) / 100000);
+}
 async function openSettings() {
   try {
     const r = await api('apiGetSettings', [TOKEN, targetId()]);
     const s = Object.assign({}, DEF_RATES, r.settings || r);
-    $('setSanjae').value = s.sanjae_rate;
-    $('setGoyong').value = s.goyong_rate;
+    $('setSanjae').value = fmtRate(s.sanjae_rate);
+    $('setGoyong').value = fmtRate(s.goyong_rate);
     $('setCallFee').value = s.call_fee || 0;
     const nm = (ME.role === 'admin' && $('staffSel').value)
       ? $('staffSel').options[$('staffSel').selectedIndex].text : ME.name;
